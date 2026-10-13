@@ -25,3 +25,9 @@ By the way: the fix may not be where the failing test first points you. :-)
 - Transcript export script (for Claude Code; modify if using a different tool): `tools/export-transcripts.sh` (the handout tells you when to run it)
 
 See the Lab 1 handout on the course page for the three milestones you show a TA.
+
+## Tools and Models
+
+- Tool: Trae
+- Model: GLM-5.2
+
