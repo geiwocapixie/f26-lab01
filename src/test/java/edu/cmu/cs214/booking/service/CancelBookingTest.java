@@ -64,4 +64,46 @@ class CancelBookingTest {
         assertEquals(new TimeInterval(630, 700), bookings.get(0).interval());
         assertTrue(store.waitlistForRoom(roomA).isEmpty());
     }
+
+    // S4 先到先得 + 至多一人
+    @Test
+    void promotesEarliestFittingWaiterAndAtMostOne() {
+        newService();
+        Booking a = confirm(roomA, alice, new TimeInterval(600, 720));
+        assertInstanceOf(BookingResult.Waitlisted.class, svc.book(roomA, bob, new TimeInterval(600, 660)));
+        assertInstanceOf(BookingResult.Waitlisted.class, svc.book(roomA, carol, new TimeInterval(660, 700)));
+        svc.cancelBooking(a.id());
+        List<Booking> bookings = svc.listBookings(roomA);
+        assertEquals(1, bookings.size());
+        assertEquals("u2", bookings.get(0).user().id());
+    }
+
+    // S5 跳过仍冲突者，晋升下一个合适的
+    @Test
+    void skipsConflictingWaiterAndPromotesNextFittingOne() {
+        newService();
+        confirm(roomA, alice, new TimeInterval(600, 660));
+        confirm(roomA, dave, new TimeInterval(700, 760));
+        assertInstanceOf(BookingResult.Waitlisted.class, svc.book(roomA, bob, new TimeInterval(630, 730)));
+        assertInstanceOf(BookingResult.Waitlisted.class, svc.book(roomA, carol, new TimeInterval(610, 650)));
+        svc.cancelBooking(svc.listBookings(roomA).stream()
+                .filter(b -> b.user().id().equals("u1")).findFirst().get().id());
+        List<Booking> bookings = svc.listBookings(roomA);
+        // Dave [700,760) 留着；Bob [630,730) 与 Dave 冲突→跳过；Carol [610,650) 合适→晋升
+        assertEquals(2, bookings.size());
+        assertTrue(bookings.stream().anyMatch(b -> b.user().id().equals("u3")));
+    }
+
+    // S6 不跨房间晋升
+    @Test
+    void doesNotPromoteAcrossRooms() {
+        newService();
+        Booking a = confirm(roomA, alice, new TimeInterval(600, 660));
+        confirm(roomB, dave, new TimeInterval(600, 660));
+        assertInstanceOf(BookingResult.Waitlisted.class, svc.book(roomB, bob, new TimeInterval(630, 700)));
+        svc.cancelBooking(a.id());
+        assertEquals(0, svc.listBookings(roomA).size());
+        assertEquals(1, svc.listBookings(roomB).size());
+        assertEquals(1, store.waitlistForRoom(roomB).size());
+    }
 }
