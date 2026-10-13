@@ -6,6 +6,8 @@ import edu.cmu.cs214.booking.domain.TimeInterval;
 import edu.cmu.cs214.booking.domain.User;
 import edu.cmu.cs214.booking.domain.WaitlistEntry;
 import edu.cmu.cs214.booking.repo.BookingStore;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -50,12 +52,37 @@ public class BookingService {
 
     /**
      * Cancels the confirmed booking with {@code bookingId}, freeing its slot.
-     * If no booking has that id, does nothing.
+     * If no booking has that id, does nothing. After removal, promotes the
+     * earliest-arriving waitlisted user whose interval still fits: first-come-
+     * first-served, at most one, skipping waiters who still conflict.
      */
     public void cancelBooking(String bookingId) {
-        if (store.findBooking(bookingId).isEmpty()) {
+        var found = store.findBooking(bookingId);
+        if (found.isEmpty()) {
             return;
         }
+        Room room = found.get().room();
         store.removeBooking(bookingId);
+
+        List<WaitlistEntry> waiters = new ArrayList<>(store.waitlistForRoom(room));
+        waiters.sort(Comparator.comparingInt(WaitlistEntry::seq));
+        for (WaitlistEntry waiter : waiters) {
+            if (fitsWithoutConflict(waiter.interval(), room)) {
+                Booking promoted = new Booking("b" + nextBookingSeq++, room, waiter.user(), waiter.interval());
+                store.addBooking(promoted);
+                store.removeWaitlistEntry(waiter.id());
+                return;
+            }
+        }
+    }
+
+    /** True if {@code interval} overlaps no remaining confirmed booking in {@code room}. */
+    private boolean fitsWithoutConflict(TimeInterval interval, Room room) {
+        for (Booking existing : store.bookingsForRoom(room)) {
+            if (existing.interval().overlaps(interval)) {
+                return false;
+            }
+        }
+        return true;
     }
 }
